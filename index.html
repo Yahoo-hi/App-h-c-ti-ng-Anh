@@ -1,1 +1,315 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI English Pronunciation Grader</title>
+    <style>
+        :root {
+            --primary: #4A90E2;
+            --success: #2ECC71;
+            --warning: #F1C40F;
+            --danger: #E74C3C;
+            --dark: #2C3E50;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fb;
+            color: var(--dark);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+        }
+        h1 {
+            text-align: center;
+            color: var(--primary);
+            margin-bottom: 30px;
+        }
+        .level-selector {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 25px;
+        }
+        .level-btn {
+            flex: 1;
+            margin: 0 5px;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .level-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        .phrase-box {
+            background: #f8fafc;
+            border-left: 5px solid var(--primary);
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 25px;
+            font-size: 1.2rem;
+            font-weight: 500;
+            text-align: center;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+        .btn-record {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: none;
+            background: var(--primary);
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.4);
+        }
+        .btn-record.recording {
+            background: var(--danger);
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .status {
+            font-style: italic;
+            color: #7f8c8d;
+            height: 20px;
+        }
+        .result-section {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            text-align: center;
+            display: none;
+        }
+        .score {
+            font-size: 3rem;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .feedback {
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
+        .user-transcript {
+            margin-top: 10px;
+            color: #555;
+            font-size: 0.95rem;
+        }
+    </style>
+</head>
+<body>
 
+<div class="container">
+    <h1>Pronunciation Coach (US Accent)</h1>
+
+    <div class="level-selector">
+        <button class="level-btn active" onclick="changeLevel('A1')">A1</button>
+        <button class="level-btn" onclick="changeLevel('A2')">A2</button>
+        <button class="level-btn" onclick="changeLevel('B1')">B1</button>
+        <button class="level-btn" onclick="changeLevel('B2')">B2</button>
+    </div>
+
+    <div class="phrase-box" id="phraseMaster">
+        Loading phrase...
+    </div>
+
+    <div class="controls">
+        <button class="btn-record" id="btnRecord">🎙️</button>
+        <div class="status" id="statusText">Bấm micro và nói câu phía trên</div>
+        <button style="padding: 5px 10px; cursor: pointer; background: none; border: 1px solid #ccc; border-radius: 4px;" onclick="nextPhrase()">Đổi câu khác 🔄</button>
+    </div>
+
+    <div class="result-section" id="resultSection">
+        <h3>Kết quả của bạn:</h3>
+        <div class="score" id="scoreNumber">0%</div>
+        <div class="feedback" id="feedbackText">Good job!</div>
+        <div class="user-transcript">Bạn đã nói: "<span id="spokenText" style="font-weight: bold;"></span>"</div>
+    </div>
+</div>
+
+<script>
+    // Kho dữ liệu câu mẫu theo cấp độ CEFR
+    const database = {
+        A1: [
+            "Nice to meet you.",
+            "Where are you from?",
+            "The weather is beautiful today.",
+            "I love listening to music."
+        ],
+        A2: [
+            "Could you please tell me the time?",
+            "I am planning to go shopping this weekend.",
+            "My favorite hobby is playing basketball.",
+            "Thank you so much for your assistance."
+        ],
+        B1: [
+            "It is important to maintain a healthy work life balance.",
+            "I completely agree with your perspective on this matter.",
+            "Technology has changed the way we communicate with each other.",
+            "If it rains tomorrow, we might have to cancel our outdoor plans."
+        ],
+        B2: [
+            "Environmental sustainability should be a top priority for global leaders.",
+            "Despite facing numerous obstacles, she managed to achieve her academic goals.",
+            "The economic impact of the new regulations remains a subject of intense debate.",
+            "To adapt to a rapidly changing market, companies must innovate continuously."
+        ]
+    };
+
+    let currentLevel = 'A1';
+    let currentPhrase = '';
+    let recognition;
+    let isRecording = false;
+
+    const phraseMaster = document.getElementById('phraseMaster');
+    const btnRecord = document.getElementById('btnRecord');
+    const statusText = document.getElementById('statusText');
+    const resultSection = document.getElementById('resultSection');
+    const scoreNumber = document.getElementById('scoreNumber');
+    const feedbackText = document.getElementById('feedbackText');
+    const spokenText = document.getElementById('spokenText');
+
+    // Khởi tạo Web Speech API
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        
+        // Thiết lập chuẩn tiếng Anh Mỹ (US)
+        recognition.lang = 'en-US'; 
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+
+        recognition.onstart = () => {
+            isRecording = true;
+            btnRecord.classList.add('recording');
+            statusText.innerText = "Đang lắng nghe... Hãy nói đi!";
+            resultSection.style.display = 'none';
+        };
+
+        recognition.onerror = (event) => {
+            console.error(event);
+            statusText.innerText = "Lỗi nhận diện. Hãy thử lại.";
+            stopRecording();
+        };
+
+        recognition.onend = () => {
+            stopRecording();
+        };
+
+        recognition.onresult = (event) => {
+            const resultText = event.results[0][0].transcript;
+            calculateScore(resultText);
+        };
+    } else {
+        alert("Trình duyệt của bạn không hỗ trợ nhận diện giọng nói. Hãy dùng Google Chrome!");
+    }
+
+    // Đổi cấp độ câu hỏi
+    function changeLevel(level) {
+        currentLevel = level;
+        document.querySelectorAll('.level-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if(btn.innerText === level) btn.classList.add('active');
+        });
+        nextPhrase();
+    }
+
+    // Lấy ngẫu nhiên câu hỏi từ cấp độ đã chọn
+    function nextPhrase() {
+        const phrases = database[currentLevel];
+        const randomIndex = Math.floor(Math.random() * phrases.length);
+        currentPhrase = phrases[randomIndex];
+        phraseMaster.innerText = currentPhrase;
+        resultSection.style.display = 'none';
+        statusText.innerText = "Bấm micro và nói câu phía trên";
+    }
+
+    function stopRecording() {
+        isRecording = false;
+        btnRecord.classList.remove('recording');
+    }
+
+    // Logic xử lý nút Ghi âm
+    btnRecord.addEventListener('click', () => {
+        if (!recognition) return;
+        if (isRecording) {
+            recognition.stop();
+        } else {
+            recognition.start();
+        }
+    });
+
+    // Thuật toán so sánh độ chính xác phát âm (Levensthein Distance giản lược)
+    function calculateScore(userSpeech) {
+        // Chuẩn hóa chuỗi (bỏ dấu câu, viết thường)
+        const cleanOriginal = currentPhrase.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g,"").trim();
+        const cleanUser = userSpeech.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g,"").trim();
+
+        const wordsOriginal = cleanOriginal.split(' ');
+        const wordsUser = cleanUser.split(' ');
+
+        let correctWords = 0;
+        
+        // Đếm số từ khớp nhau
+        wordsOriginal.forEach(word => {
+            if (wordsUser.includes(word)) {
+                correctWords++;
+            }
+        });
+
+        // Tính phần trăm điểm
+        let score = Math.round((correctWords / wordsOriginal.length) * 100);
+        if (score > 100) score = 100;
+
+        // Hiển thị kết quả
+        displayResult(score, userSpeech);
+    }
+
+    // Hiển thị giao diện kết quả
+    function displayResult(score, transcript) {
+        resultSection.style.display = 'block';
+        spokenText.innerText = transcript;
+        scoreNumber.innerText = `${score}%`;
+
+        if (score >= 85) {
+            scoreNumber.style.color = 'var(--success)';
+            feedbackText.innerText = "Excellent! Phát âm chuẩn Anh-Mỹ xuất sắc.";
+        } else if (score >= 60) {
+            scoreNumber.style.color = 'var(--warning)';
+            feedbackText.innerText = "Good! Phát âm khá tốt, cần rõ chữ hơn nữa.";
+        } else {
+            scoreNumber.style.color = 'var(--danger)';
+            feedbackText.innerText = "Keep trying! Cố gắng đọc chậm và rõ ràng từng từ nhé.";
+        }
+        statusText.innerText = "Đã chấm điểm xong!";
+    }
+
+    // Chạy lần đầu tiên khi tải trang
+    nextPhrase();
+</script>
+
+</body>
+</html>
